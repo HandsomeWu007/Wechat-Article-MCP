@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {execFileSync, spawn} from 'node:child_process';
 import {HttpClient} from '../dist/core/http.js';
 import {SogouClient} from '../dist/core/sogou.js';
@@ -80,14 +81,14 @@ test('backend page offset and nextBegin are preserved',async()=>{
 });
 test('bundled program reads config beside bin folder',()=>{
  const file=new URL('../config.json',import.meta.url);assert.equal(fs.existsSync(file),false);
- try{fs.writeFileSync(file,JSON.stringify({minIntervalMs:4567}));const r=JSON.parse(execFileSync(process.execPath,[new URL('../bin/wechat-mp-cli.mjs',import.meta.url).pathname,'status'],{encoding:'utf8'}));assert.equal(r.config.minIntervalMs,4567)}finally{fs.rmSync(file,{force:true})}
+ try{fs.writeFileSync(file,JSON.stringify({minIntervalMs:4567}));const r=JSON.parse(execFileSync(process.execPath,[fileURLToPath(new URL('../bin/wechat-mp-cli.mjs',import.meta.url)),'status'],{encoding:'utf8'}));assert.equal(r.config.minIntervalMs,4567)}finally{fs.rmSync(file,{force:true})}
 });
 test('bundled MCP server initializes and exposes all seven tools', async()=>{
  const {Client}=await import('@modelcontextprotocol/sdk/client/index.js');
  const {StdioClientTransport}=await import('@modelcontextprotocol/sdk/client/stdio.js');
  const client=new Client({name:'regression',version:'1'});
  try {
-  await client.connect(new StdioClientTransport({command:process.execPath,args:[new URL('../bin/wechat-mp.mjs',import.meta.url).pathname]}));
+  await client.connect(new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('../bin/wechat-mp.mjs',import.meta.url))]}));
   assert.equal((await client.listTools()).tools.length,7);
   const r=await client.callTool({name:'wechat_status',arguments:{}});assert.equal(JSON.parse(r.content[0].text).ok,true);
  }finally{await client.close()}
