@@ -208,4 +208,3 @@ main().catch((err) => {
   console.error('[wechat-mp] fatal:', err);
   process.exit(1);
 });
-
