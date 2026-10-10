@@ -1,0 +1,10 @@
+node_modules/
+dist/
+config.json
+.env
+.env.*
+!.env.example
+images/
+*.log
+*.bak*
+bin/review-instrumented.mjs

@@ -1,0 +1,25 @@
+# 手动安装参考：把下面这一段放进 ~/.dsh/profiles/<profile>/cordis.patch.yml
+# （自动安装请直接跑 install/install-dsh.ps1，它会把路径替换成你机器上的实际路径）
+#
+# 说明：
+#   - 一个 mcp-client 实例 = 一台 MCP server；id 必须唯一
+#   - serverName 决定工具命名空间，最终工具名是 mcp__wechat-mp__wechat_search_articles 等
+#   - command 建议写 node 的绝对路径，写 "node" 时若 dsh 环境 PATH 里没有会启动失败
+#   - 装完必须完全退出并重启 dsh 才会生效
+
+- insert:
+    - id: mcp-wechat-mp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: wechat-mp
+        transport: stdio
+        command: 'D:/Program Files/nodejs/node.exe'
+        args: ['C:/Users/你的用户名/.dsh/wechat-mp-mcp/bin/wechat-mp.mjs']
+        cwd: 'C:/Users/你的用户名/.dsh/wechat-mp-mcp'
+        # 抓正文会串行请求多个页面，默认 60s 不够
+        toolCallTimeoutMs: 300000
+        # 设为 true 时连不上会直接拒绝插件激活；留 false 更稳（只是工具不出现）
+        failOnStartupError: false
+        # 可选：把浏览器里的 cookie 填进来，能显著缓解搜狗验证码
+        # env:
+        #   WECHAT_MP_SOGOU_COOKIE: 'SNUID=xxxxxxxx; SUID=xxxxxxxx'

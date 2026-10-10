@@ -1,0 +1,42 @@
+{
+  "name": "wechat-mp-mcp",
+  "version": "0.1.1",
+  "description": "微信公众号文章访问插件：MCP server + CLI，供 Codex / DeepSeek harness 等 agent 搜索与读取公众号文章",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "wechat-mp": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "postbuild": "node scripts/postbuild.mjs",
+    "dev": "tsx src/index.ts",
+    "cli": "tsx src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "node scripts/smoke-mcp.mjs && node scripts/smoke-batch.mjs",
+    "build:bundle": "node scripts/bundle.mjs",
+    "release": "npm run build && npm run build:bundle",
+    "verify:dsh": "node scripts/check-patch.cjs",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "cheerio": "^1.0.0",
+    "iconv-lite": "^0.6.3",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2",
+    "undici": "^8.11.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/turndown": "^5.0.5",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
