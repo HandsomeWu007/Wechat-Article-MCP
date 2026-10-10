@@ -35,7 +35,7 @@ async function run<T>(fn: () => Promise<T>): Promise<any> {
 const server = new McpServer(
   {
     name: 'wechat-mp',
-    version: '0.1.1',
+    version: '0.1.2',
   },
   {
     instructions:
@@ -208,3 +208,4 @@ main().catch((err) => {
   console.error('[wechat-mp] fatal:', err);
   process.exit(1);
 });
+
