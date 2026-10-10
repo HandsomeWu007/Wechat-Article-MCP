@@ -48,4 +48,3 @@ for client in ('codex', 'dsh'):
     print(f'PASS ZIP integrity, syntax, extracted CLI status: {archive.name}')
 (output / 'SHA256SUMS.txt').write_text('\n'.join(checksums) + '\n', encoding='utf-8')
 print('\n'.join(checksums))
-
