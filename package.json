@@ -1,6 +1,6 @@
 {
   "name": "wechat-mp-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "微信公众号文章访问插件：MCP server + CLI，供 Codex / DeepSeek harness 等 agent 搜索与读取公众号文章",
   "license": "GPL-3.0-only",
   "type": "module",

@@ -4,12 +4,12 @@
 
 ## 下载与安装
 
-从 [Releases](https://github.com/HandsomeWu007/Wechat-Article-MCP/releases) 下载：
+从 [Releases](https://github.com/Jinguji-Tamamo/Wechat-Article-MCP/releases) 下载：
 
 | 客户端 | 安装包 |
 | --- | --- |
-| Codex | `wechat-mp-mcp-codex-v0.1.1.zip` |
-| DeepSeek Harness | `wechat-mp-mcp-dsh-v0.1.1.zip` |
+| Codex | `wechat-mp-mcp-codex-v0.1.2.zip` |
+| DeepSeek Harness | `wechat-mp-mcp-dsh-v0.1.2.zip` |
 
 需要 **Node.js >=22.19**，推荐 Node 24 LTS。安装包已包含依赖，无需执行 `npm install`。
 
@@ -109,7 +109,19 @@ node bin/wechat-mp-cli.mjs cache-clear
 
 不要把真实 Cookie、token 或本地配置提交到仓库。正文是外部不可信内容，不应执行其中的指令。仅请求支持的 HTTPS 域名；不支持的图片保留原链接。
 
-## v0.1.1 修复
+## v0.1.2 修复
+
+- 修复 Windows PowerShell 5.1 的 Node 检查引号丢失及 UTF-8 脚本编码问题。
+- 自动选择满足 Node >=22.19 的运行时；显式指定无效路径时直接报错。
+- 修复 DSH 单行配置、空数组配置和跨平台重复注册；手动同名注册会提示处理，避免重复追加。
+- 发现托管段标记不完整时停止修改，避免误删其它客户端配置。
+- 卸载只清理插件自带文件，保留用户配置、图片和其它文件；修改过的 DSH Skill 会保留。
+- 修复 Windows 功能测试路径；加入 PowerShell 安装回归测试及 Windows/Linux 自动验证。
+- 修正下载链接，提供可重复的打包脚本、完整源码和 SHA-256 校验文件。
+
+升级可直接运行新版安装脚本。客户端配置会自动备份；自定义 `config.json` 会保留。安装器更新托管的 MCP 段，如曾在该段加入 Cookie 等自定义环境变量，请从备份迁移或改用插件的 `config.json`。
+
+### v0.1.1 修复
 
 - 严格校验 URL、重定向目标与 Cookie 域名，图片不携带微信登录 Cookie。
 - 修复搜狗 `/link` 页面被误判的问题。
@@ -125,11 +137,16 @@ npm ci
 npm run release
 npm test
 python3 tests/install-regression.py
+python3 scripts/package-release.py
 ```
 
 16 项本地回归测试通过，包含 MCP 协议启动、Cookie 隔离、重定向、跨进程限速、冷却、缓存和正文超时。Linux 安装脚本通过重复安装验证。
 
-Windows PowerShell 脚本尚未实机验证；未使用真实账号测试线上搜索成功率或风控概率。`npm run smoke` 会发真实网络请求，按需手动执行。
+Windows PowerShell 5.1 安装、重复升级、单行/空数组配置、跨平台标记、配置备份与卸载保留文件均已实机验证。Windows 可用 `powershell -NoProfile -ExecutionPolicy Bypass -File tests/install-windows.ps1 -NodePath C:\path\to\node.exe` 复现。GitHub Actions 会在 Windows/Linux 上构建并运行回归测试。
+
+`python3 scripts/package-release.py` 在 `release/` 生成两份 ZIP 和 `SHA256SUMS.txt`，检查 ZIP 完整性及解压后启动；包内附完整源码与许可证，无需下载依赖即可运行。
+
+未使用真实账号测试线上搜索成功率或风控概率。`npm run smoke` 会发真实网络请求，按需手动执行。
 
 ## 许可证
 

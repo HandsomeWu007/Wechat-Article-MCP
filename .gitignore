@@ -8,3 +8,6 @@ images/
 *.log
 *.bak*
 bin/review-instrumented.mjs
+tests/.tmp-*/
+release/
+pnpm-lock.yaml
