@@ -5,7 +5,8 @@ set -euo pipefail
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE_NAME="${PROFILE_NAME:-web}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="$DSH_HOME/wechat-mp-mcp"
+DEST="${INSTALL_DIR:-$DSH_HOME/wechat-mp-mcp}"
+[[ "$PROFILE_NAME" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Invalid profile name' >&2; exit 1; }
 PATCH="$DSH_HOME/profiles/$PROFILE_NAME/cordis.patch.yml"
 
 if [[ ! -f "$SRC/bin/wechat-mp.mjs" ]]; then
@@ -17,24 +18,34 @@ if [[ ! -d "$DSH_HOME" ]]; then
   exit 1
 fi
 
-# ---- node ----
+# Select only a supported runtime. An explicit override must not silently fall back.
 NODE=""
-for c in "${WECHAT_MP_NODE:-}" "$(command -v node || true)" /usr/local/bin/node /opt/homebrew/bin/node; do
-  [[ -z "$c" || ! -x "$c" ]] && continue
-  if [[ "$("$c" -v 2>/dev/null || true)" =~ ^v([0-9]+) ]] && (( BASH_REMATCH[1] >= 22 )); then
-    NODE="$c"; break
+if [[ -n "${WECHAT_MP_NODE:-}" ]]; then
+  CANDIDATES=("$WECHAT_MP_NODE")
+else
+  CANDIDATES=("$(command -v node || true)" /usr/local/bin/node /opt/homebrew/bin/node)
+fi
+for c in "${CANDIDATES[@]}"; do
+  [[ -n "$c" && -x "$c" ]] || continue
+  if "$c" -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=19)?0:1)' 2>/dev/null; then
+    NODE="$(cd "$(dirname "$c")" && pwd)/$(basename "$c")"
+    break
   fi
 done
-[[ -z "$NODE" ]] && { echo "未找到 Node >= 22.19，请先安装 Node.js。" >&2; exit 1; }
-"$NODE" -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<22 || (a===22 && b<19)) {console.error("Node >=22.19 required");process.exit(1)}'
-echo "[1/5] node: $NODE ($("$NODE" -v))"
+[[ -n "$NODE" ]] || { echo 'Node >=22.19 required. Set WECHAT_MP_NODE to a supported executable.' >&2; exit 1; }
+echo "node: $NODE ($("$NODE" -v))"
+
+CLEANED=""
+if [[ -f "$PATCH" ]]; then CLEANED=$("$NODE" "$SRC/install/clean-config.mjs" dsh "$PATCH"); fi
+mkdir -p "$DEST"
+DEST="$(cd "$DEST" && pwd)"
 
 # ---- 复制 ----
 echo "[2/5] 安装服务到 $DEST"
 mkdir -p "$DEST/bin"
 cp "$SRC/bin/wechat-mp.mjs" "$DEST/bin/wechat-mp.mjs"
 cp "$SRC/bin/wechat-mp-cli.mjs" "$DEST/bin/wechat-mp-cli.mjs"
-for f in README.md SKILL.md config.example.json; do
+for f in README.md SKILL.md config.example.json LICENSE; do
   [[ -f "$SRC/$f" ]] && cp "$SRC/$f" "$DEST/$f"
 done
 
@@ -60,18 +71,8 @@ $END"
 
 mkdir -p "$(dirname "$PATCH")"
 if [[ -f "$PATCH" ]]; then
-  if grep -qF "$BEGIN" "$PATCH"; then
-    cp "$PATCH" "$PATCH.bak-$(date +%Y%m%d-%H%M%S)"
-    awk -v b="$BEGIN" -v e="$END" '
-      index($0,b) {skip=1}
-      skip {if (index($0,e)) skip=0; next}
-      {print}
-    ' "$PATCH" > "$PATCH.tmp" && mv "$PATCH.tmp" "$PATCH"
-    echo "      已移除旧的 wechat-mp 条目（升级安装）"
-  else
-    cp "$PATCH" "$PATCH.bak-$(date +%Y%m%d-%H%M%S)"
-  fi
-  printf '%s\n%s\n' "$(cat "$PATCH")" "$BLOCK" > "$PATCH.tmp" && mv "$PATCH.tmp" "$PATCH"
+  cp "$PATCH" "$PATCH.bak-$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
+  printf '%s\n%s\n' "$CLEANED" "$BLOCK" > "$PATCH.tmp" && mv "$PATCH.tmp" "$PATCH"
 else
   printf '%s\n' "$BLOCK" > "$PATCH"
 fi
@@ -85,7 +86,7 @@ fi
 
 # ---- 自检 ----
 echo "[5/5] 自检"
-if "$NODE" "$DEST/bin/wechat-mp-cli.mjs" status 2>&1 | grep -q '"ok"'; then
+if "$NODE" "$DEST/bin/wechat-mp-cli.mjs" status 2>&1 | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
   echo '      MCP server 可正常启动'
 else
   echo '      status 异常，请手动检查'

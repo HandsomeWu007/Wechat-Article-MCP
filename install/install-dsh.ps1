@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   把 wechat-mp MCP 服务装进 DeepSeek Harness (dsh)。
 
@@ -27,6 +27,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot "common.ps1")
 
 # ---------- 路径 ----------
 $Src    = Resolve-Path (Join-Path $PSScriptRoot '..')
@@ -41,42 +42,27 @@ if (-not (Test-Path $DshHome)) {
   throw "dsh 目录不存在：$DshHome（可用 -DshHome 指定，或设置环境变量 DSH_HOME）"
 }
 
-# ---------- 选择 node ----------
-function Resolve-Node {
-  param([string]$Hint)
-  $candidates = @()
-  if ($Hint) { $candidates += $Hint }
-  $candidates += @(
-    'D:\Program Files\nodejs\node.exe',
-    "$env:ProgramFiles\nodejs\node.exe",
-    "$env:LOCALAPPDATA\Programs\nodejs\node.exe"
-  )
-  $cmd = Get-Command node -ErrorAction SilentlyContinue
-  if ($cmd) { $candidates += $cmd.Source }
-
-  foreach ($c in $candidates) {
-    if (-not $c) { continue }
-    if (Test-Path $c) {
-      try {
-        $v = (& $c -v 2>$null | Out-String).Trim()
-        if ($v -match 'v(\d+)') {
-          $major = [int]$Matches[1]
-          if ($major -ge 22) {
-            # 返回对象，不要返回数组：PowerShell 多值返回容易被粘成一个字符串
-            return [pscustomobject]@{ Path = $c; Version = $v }
-          }
-        }
-      } catch {}
-    }
+if ($ProfileName -notmatch '^[A-Za-z0-9_-]+$') { throw 'Invalid profile name.' }
+if (Test-Path -LiteralPath $Patch) {
+  $existingLines = @(Get-Content -LiteralPath $Patch -Encoding UTF8)
+  $existingLines = @(Remove-WechatManagedBlock -Lines $existingLines -Client dsh)
+  $contentLines = @($existingLines | Where-Object { $_.Trim() -and $_ -notmatch '^\s*#' })
+  if ($contentLines.Count -eq 1 -and $contentLines[0] -match '^\s*\[\s*\]\s*(?:#.*)?$') {
+    $existingLines = @($existingLines | Where-Object { $_ -ne $contentLines[0] })
+  } elseif ($contentLines.Count -gt 0 -and $contentLines[0] -notmatch '^\s*-\s') {
+    throw 'Expected a YAML block sequence or an empty array. Original configuration was not changed.'
   }
-  throw '未找到 Node >= 22.19。请先安装 Node.js，或用 -NodePath 指定 node.exe 的完整路径。'
+  if (($existingLines -join "`n") -match '(?m)^\s*-?\s*id\s*:\s*["'']?mcp-wechat-mp["'']?\s*(?:#.*)?$') {
+    throw 'Existing unmanaged mcp-wechat-mp registration found. Remove it before running this installer.'
+  }
 }
 
-$nodeInfo = Resolve-Node -Hint $NodePath
+# ---------- 选择 node ----------
+$nodeInfo = Resolve-WechatNode -Hint $NodePath
 $node = $nodeInfo.Path
 $nodeVer = $nodeInfo.Version
-& $node -e 'const [a,b]=process.versions.node.split(".").map(Number);if(a<22||(a===22&&b<19))process.exit(1)'
-if ($LASTEXITCODE -ne 0) { throw '需要 Node >=22.19；推荐 Node 24 LTS。' }
+$InstallDir = [IO.Path]::GetFullPath($InstallDir)
+
 Write-Host "[1/5] node: $node ($nodeVer)" -ForegroundColor Cyan
 
 # ---------- 复制文件 ----------
@@ -84,7 +70,7 @@ Write-Host "[2/5] 安装服务到 $InstallDir" -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'bin') | Out-Null
 Copy-Item (Join-Path $SrcBin 'wechat-mp.mjs')      (Join-Path $InstallDir 'bin\wechat-mp.mjs')      -Force
 Copy-Item (Join-Path $SrcBin 'wechat-mp-cli.mjs') (Join-Path $InstallDir 'bin\wechat-mp-cli.mjs')  -Force
-foreach ($f in @('README.md', 'SKILL.md', 'config.example.json')) {
+foreach ($f in @('README.md', 'SKILL.md', 'config.example.json', 'LICENSE')) {
   $p = Join-Path $Src $f
   if (Test-Path $p) { Copy-Item $p (Join-Path $InstallDir $f) -Force }
 }
@@ -126,28 +112,13 @@ if (-not (Test-Path $Patch)) {
     '# 这是一个 YAML 数组，每一项是 loader patch 条目。'
   ) -join "`n"
   New-Item -ItemType Directory -Force -Path (Split-Path $Patch) | Out-Null
-  Set-Content -Path $Patch -Value ($header + "`n" + $block) -Encoding UTF8
+  [IO.File]::WriteAllText($Patch, ($header + "`n" + $block + "`n"), (New-Object Text.UTF8Encoding($false)))
 } else {
-  $lines = Get-Content -Path $Patch -Encoding UTF8
-  $b = -1; $e = -1
-  for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -like "*$markerBegin*") { $b = $i }
-    if ($lines[$i] -like "*$markerEnd*")   { $e = $i }
-  }
-  if ($b -ge 0 -and $e -ge $b) {
-    $kept = @()
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-      if ($i -ge $b -and $i -le $e) { continue }
-      $kept += $lines[$i]
-    }
-    $lines = $kept
-    Write-Host '      已移除旧的 wechat-mp 条目（升级安装）' -ForegroundColor Yellow
-  }
-  $bak = "$Patch.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
-  Copy-Item $Patch $bak -Force
+  $lines = $existingLines
+  $bak = Backup-WechatConfig -Path $Patch
   $text = ($lines -join "`n")
   if ($text -and -not $text.EndsWith("`n")) { $text += "`n" }
-  Set-Content -Path $Patch -Value ($text + $block + "`n") -Encoding UTF8
+  [IO.File]::WriteAllText($Patch, ($text + $block + "`n"), (New-Object Text.UTF8Encoding($false)))
   Write-Host "      原配置已备份: $bak" -ForegroundColor DarkGray
 }
 

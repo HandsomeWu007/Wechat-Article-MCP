@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   从 Codex CLI 卸载 wechat-mp MCP 服务。
 
@@ -18,36 +18,20 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot "common.ps1")
 
 $InstallDir = if ($InstallDir) { $InstallDir } else { Join-Path $env:USERPROFILE 'tools\wechat-mp-mcp' }
 $Config = Join-Path $CodexHome 'config.toml'
 
 # ---------- 清理配置 ----------
 if (Test-Path $Config) {
-  $lines = Get-Content -Path $Config -Encoding UTF8
-  $markerBegin = '# >>> wechat-mp-mcp (managed by install-codex'
-  $markerEnd   = '# <<< wechat-mp-mcp (managed by install-codex'
-
-  $kept = New-Object System.Collections.Generic.List[string]
-  $mode = ''
-  $removed = $false
-  foreach ($line in $lines) {
-    if ($line -like "*$markerBegin*") { $mode = 'marker'; $removed = $true; continue }
-    if ($mode -eq 'marker') {
-      if ($line -like "*$markerEnd*") { $mode = '' }
-      continue
-    }
-    if ($mode -eq '') {
-      if ($line -match '^\s*\[mcp_servers\.wechat-mp(?:\]|\.)') { $mode = 'section'; $removed = $true; continue }
-    } else {
-      if ($line -match '^\s*\[mcp_servers\.wechat-mp(?:\]|\.)') { continue }; if ($line -match '^\s*\[') { $mode = '' } else { continue }
-    }
-    $kept.Add($line)
-  }
+  $lines = @(Get-Content -LiteralPath $Config -Encoding UTF8)
+  $kept = @(Remove-WechatManagedBlock -Lines $lines -Client codex)
+  $kept = @(Remove-WechatCodexSection -Lines $kept)
+  $removed = ($lines -join "`n") -ne ($kept -join "`n")
 
   if ($removed) {
-    $bak = "$Config.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
-    Copy-Item $Config $bak -Force
+    $bak = Backup-WechatConfig -Path $Config
     [IO.File]::WriteAllText($Config, (($kept -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
     Write-Host "[1/2] 已移除 config.toml 中的 wechat-mp 段（备份: $bak）" -ForegroundColor Green
   } else {
@@ -61,8 +45,8 @@ if (Test-Path $Config) {
 if ($KeepFiles) {
   Write-Host "[2/2] 保留文件: $InstallDir" -ForegroundColor DarkGray
 } elseif (Test-Path $InstallDir) {
-  Remove-Item $InstallDir -Recurse -Force
-  Write-Host "[2/2] 已删除 $InstallDir" -ForegroundColor Green
+  Remove-WechatFiles -Directory $InstallDir
+  Write-Host "[2/2] 已清理插件文件: $InstallDir（保留其它文件）" -ForegroundColor Green
 } else {
   Write-Host "[2/2] 安装目录不存在: $InstallDir" -ForegroundColor DarkGray
 }

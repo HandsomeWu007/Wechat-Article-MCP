@@ -10,30 +10,39 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC_BIN="$SRC/bin"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/tools/wechat-mp-mcp}"
-CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-CONFIG="$CODEX_HOME/config.toml"
+CODEX_CONFIG_DIR="${CODEX_HOME:-$HOME/.codex}"
+CONFIG="$CODEX_CONFIG_DIR/config.toml"
 
 [ -f "$SRC_BIN/wechat-mp.mjs" ] || { echo "找不到 $SRC_BIN/wechat-mp.mjs，请在解压后的根目录执行本脚本。" >&2; exit 1; }
 
-# ---------- 选择 node ----------
-NODE="${WECHAT_MP_NODE:-}"
-if [ -z "$NODE" ]; then
-  for c in "$(command -v node || true)" /usr/local/bin/node /opt/homebrew/bin/node; do
-    [ -n "$c" ] && [ -x "$c" ] || continue
-    major=$("$c" -v | sed 's/^v//' | cut -d. -f1)
-    if [ "${major:-0}" -ge 18 ] 2>/dev/null; then NODE="$c"; break; fi
-  done
+# Select only a supported runtime. An explicit override must not silently fall back.
+NODE=""
+if [[ -n "${WECHAT_MP_NODE:-}" ]]; then
+  CANDIDATES=("$WECHAT_MP_NODE")
+else
+  CANDIDATES=("$(command -v node || true)" /usr/local/bin/node /opt/homebrew/bin/node)
 fi
-[ -n "$NODE" ] || { echo "未找到 Node >= 22.19，请用 WECHAT_MP_NODE=/path/to/node 指定。" >&2; exit 1; }
-"$NODE" -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<22 || (a===22 && b<19)) {console.error("Node >=22.19 required");process.exit(1)}'
-echo "[1/4] node: $NODE ($("$NODE" -v))"
+for c in "${CANDIDATES[@]}"; do
+  [[ -n "$c" && -x "$c" ]] || continue
+  if "$c" -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=19)?0:1)' 2>/dev/null; then
+    NODE="$(cd "$(dirname "$c")" && pwd)/$(basename "$c")"
+    break
+  fi
+done
+[[ -n "$NODE" ]] || { echo 'Node >=22.19 required. Set WECHAT_MP_NODE to a supported executable.' >&2; exit 1; }
+echo "node: $NODE ($("$NODE" -v))"
+
+CLEANED=""
+if [[ -f "$CONFIG" ]]; then CLEANED=$("$NODE" "$SRC/install/clean-config.mjs" codex "$CONFIG"); fi
+mkdir -p "$INSTALL_DIR"
+INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd)"
 
 # ---------- 复制文件 ----------
 echo "[2/4] 安装服务到 $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/bin"
 cp "$SRC_BIN/wechat-mp.mjs"      "$INSTALL_DIR/bin/wechat-mp.mjs"
 cp "$SRC_BIN/wechat-mp-cli.mjs"  "$INSTALL_DIR/bin/wechat-mp-cli.mjs"
-for f in README.md SKILL.md config.example.json; do
+for f in README.md SKILL.md config.example.json LICENSE; do
   [ -f "$SRC/$f" ] && cp "$SRC/$f" "$INSTALL_DIR/$f"
 done
 SERVER="$INSTALL_DIR/bin/wechat-mp.mjs"
@@ -56,28 +65,13 @@ tool_timeout_sec = 300
 $MARK_END
 "
 
-mkdir -p "$CODEX_HOME"
+mkdir -p "$CODEX_CONFIG_DIR"
 if [ ! -f "$CONFIG" ]; then
   printf '%s\n' "$BLOCK" > "$CONFIG"
   echo "      已创建新配置: $CONFIG"
 else
-  cp "$CONFIG" "$CONFIG.bak-$(date +%Y%m%d-%H%M%S)"
-  if grep -q 'managed by install-codex' "$CONFIG"; then
-    echo "      已移除旧的 wechat-mp 段（升级安装）"
-  fi
-  # 删掉旧的托管段（含标记行）
-  # 状态机一次性清掉两种旧写法：带标记行的托管段 + 手工写入的 [mcp_servers.wechat-mp]。
-  # 不清干净会留下重复定义，TOML 直接解析失败。
-  awk -v b="$MARK_BEGIN" -v e="$MARK_END" '
-    index($0,b)                                             { mode="marker"; next }
-    mode=="marker" { if (index($0,e)) mode=""; next }
-    mode=="" && $0 ~ /^[[:space:]]*\[mcp_servers\.wechat-mp(\]|\.)/ { mode="section"; next }
-    mode=="section" && $0 ~ /^[[:space:]]*\[mcp_servers\.wechat-mp(\]|\.)/ { next }
-    mode=="section" {
-      if ($0 ~ /^[[:space:]]*\[/) { mode="" } else { next }
-    }
-    { print }
-  ' "$CONFIG" > "$CONFIG.tmp"
+  cp "$CONFIG" "$CONFIG.bak-$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
+  printf '%s\n' "$CLEANED" > "$CONFIG.tmp"
   mv "$CONFIG.tmp" "$CONFIG"
   printf '%s\n' "$BLOCK" >> "$CONFIG"
 fi

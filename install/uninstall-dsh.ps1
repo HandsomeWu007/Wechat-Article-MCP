@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   从 DeepSeek Harness (dsh) 卸载 wechat-mp MCP 服务。
 
@@ -16,40 +16,32 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot "common.ps1")
 $Patch  = Join-Path $DshHome "profiles\$ProfileName\cordis.patch.yml"
 $InstallDir   = if ($InstallDir) { $InstallDir } else { Join-Path $DshHome 'wechat-mp-mcp' }
 $markerBegin = '# >>> wechat-mp-mcp (managed by install-dsh.ps1) >>>'
 $markerEnd   = '# <<< wechat-mp-mcp (managed by install-dsh.ps1) <<<'
 
-if (Test-Path $Patch) {
-  $lines = Get-Content -Path $Patch -Encoding UTF8
-  $b = -1; $e = -1
-  for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -like "*$markerBegin*") { $b = $i }
-    if ($lines[$i] -like "*$markerEnd*")   { $e = $i }
+if ($ProfileName -notmatch '^[A-Za-z0-9_-]+$') { throw 'Invalid profile name.' }
+if (Test-Path -LiteralPath $Patch) {
+  $lines = @(Get-Content -LiteralPath $Patch -Encoding UTF8)
+  $kept = @(Remove-WechatManagedBlock -Lines $lines -Client dsh)
+  if (($lines -join "`n") -ne ($kept -join "`n")) {
+    $bak = Backup-WechatConfig -Path $Patch
+    [IO.File]::WriteAllText($Patch, (($kept -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+    Write-Host "Removed managed configuration (backup: $bak)"
   }
-  if ($b -ge 0 -and $e -ge $b) {
-    $bak = "$Patch.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
-    Copy-Item $Patch $bak -Force
-    $kept = @()
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-      if ($i -ge $b -and $i -le $e) { continue }
-      $kept += $lines[$i]
-    }
-    Set-Content -Path $Patch -Value ($kept -join "`n") -Encoding UTF8
-    Write-Host "已移除 cordis.patch.yml 中的 wechat-mp 条目（备份: $bak）" -ForegroundColor Green
-  } else {
-    Write-Host 'cordis.patch.yml 中没有 wechat-mp 条目，跳过。' -ForegroundColor Yellow
-  }
-} else {
-  Write-Host "未找到 $Patch，跳过。" -ForegroundColor Yellow
 }
 
 if (-not $KeepFiles) {
-  foreach ($p in @($InstallDir, (Join-Path $DshHome 'skills\wechat-mp'))) {
-    if (Test-Path $p) {
-      Remove-Item $p -Recurse -Force
-      Write-Host "已删除 $p" -ForegroundColor Green
+  Remove-WechatFiles -Directory $InstallDir
+  $skillDir = Join-Path $DshHome 'skills\wechat-mp'
+  $skill = Join-Path $skillDir 'SKILL.md'
+  $originalSkill = Join-Path (Join-Path $PSScriptRoot '..') 'SKILL.md'
+  if ((Test-Path -LiteralPath $skill -PathType Leaf) -and (Test-Path -LiteralPath $originalSkill -PathType Leaf)) {
+    if ((Get-FileHash -LiteralPath $skill).Hash -eq (Get-FileHash -LiteralPath $originalSkill).Hash) {
+      Remove-Item -LiteralPath $skill
+      if (@(Get-ChildItem -LiteralPath $skillDir -Force).Count -eq 0) { Remove-Item -LiteralPath $skillDir }
     }
   }
 } else {
